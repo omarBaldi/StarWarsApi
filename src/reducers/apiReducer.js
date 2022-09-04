@@ -26,6 +26,7 @@ export const apiReducer = (state, action) => {
         characters: charactersList,
       };
     }
+
     default: {
       return state;
     }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useReducer } from 'react';
+import { useEffect, useReducer, useState, useCallback } from 'react';
 import { apiReducer } from './reducers/apiReducer';
 import { ACTIONS_TYPE } from './actions/apiActions';
 import { getCharacters } from './services/getCharacters';
@@ -6,6 +6,7 @@ import { getHomeworldDetails } from './services/getHomeworldDetails';
 import { MINIMUM_PAGE_PARAM_VALUE } from './constants';
 import { Character } from './components/character';
 import swloading from './assets/swloading.gif';
+import { useCachedResults } from './hooks/useCachedResults';
 
 const initialState = {
   loading: true,
@@ -13,78 +14,71 @@ const initialState = {
   characters: [],
 };
 
-/**
- * TODO: implemente absolute imports
- */
 const App = () => {
   /* *------------------------------------------------------* */
   /*                          NEW CODE
   /* *------------------------------------------------------* */
 
-  const endpointPageParam = useRef(MINIMUM_PAGE_PARAM_VALUE);
   const [state, dispatch] = useReducer(apiReducer, initialState);
+  const [page, setPage] = useState(MINIMUM_PAGE_PARAM_VALUE);
+  const { updateCacheResults, currentCachedResult } = useCachedResults(page);
 
-  /* NOTE: whenever the next button is clicked,
-  and I need to call endpoint with different page param,
-  rather than call once again endpoint for retrieving homeworld
-  details, I need to check if the homeworld details have
-  already been retrieved, otherwise proceed with just call API endpoint
-  for those who I do not have info about. */
-
-  const getCharactersList = async () => {
-    try {
-      const characters = await getCharacters({
-        page: endpointPageParam.current,
-      });
-
-      const homeworldDetails = await Promise.all(
-        characters.map(getHomeworldDetails)
-      );
-
-      const homeWorldDetailsObj = homeworldDetails.reduce(
-        (acc, { url, ...rest }) => {
-          return { ...acc, [url]: rest };
-        },
-        {}
-      );
-
-      const updatedCharacters = characters.map((character) => ({
-        ...character,
-        homeWorldDetail: homeWorldDetailsObj[character.homeworld],
-      }));
-
-      dispatch({
-        type: ACTIONS_TYPE.SET_CHARACTERS,
-        payload: updatedCharacters,
-      });
-    } catch (err) {
-      const errorMessage = err.message || 'Error here!';
-      dispatch({ type: ACTIONS_TYPE.SET_ERROR_MESSAGE, payload: errorMessage });
-    } finally {
-      dispatch({ type: ACTIONS_TYPE.SET_LOADING, payload: false });
+  const getCharactersList = useCallback(async () => {
+    if (currentCachedResult) {
+      return currentCachedResult;
     }
-  };
+
+    const characters = await getCharacters({
+      page,
+    });
+
+    const homeworldDetails = (
+      await Promise.all(characters.map(getHomeworldDetails))
+    ).reduce((acc, { url, ...rest }) => {
+      return { ...acc, [url]: rest };
+    }, {});
+
+    const updatedCharacters = characters.map((character) => ({
+      ...character,
+      homeWorldDetail: homeworldDetails[character.homeworld],
+    }));
+
+    updateCacheResults(updatedCharacters);
+
+    return updatedCharacters;
+  }, [page]);
 
   /* As soon as the component is mounted, call API endpoint
   to retrieve list of characters */
   useEffect(() => {
-    getCharactersList();
-  }, []);
+    getCharactersList()
+      .then((updatedCharacters) => {
+        dispatch({
+          type: ACTIONS_TYPE.SET_CHARACTERS,
+          payload: updatedCharacters,
+        });
+      })
+      .catch((err) => {
+        const errorMessage = err.message || 'Error here!';
+        dispatch({
+          type: ACTIONS_TYPE.SET_ERROR_MESSAGE,
+          payload: errorMessage,
+        });
+      })
+      .finally(() => {
+        dispatch({ type: ACTIONS_TYPE.SET_LOADING, payload: false });
+      });
+  }, [getCharactersList]);
 
   const handlePreviousPage = () => {
-    if (endpointPageParam.current > 1) {
-      endpointPageParam.current -= 1;
-    }
-
-    getCharactersList();
+    setPage((prevPage) => (prevPage <= 1 ? prevPage : prevPage - 1));
   };
 
   /* As soon as the next page button is being clicked,
   I need to increment the page param by 1 and repeat the process
   of getting characters + homeWorld details */
   const handleNextPage = () => {
-    endpointPageParam.current += 1;
-    getCharactersList();
+    setPage((prevPage) => prevPage + 1);
   };
 
   if (state.loading) return <img src={swloading} alt=''></img>;
