@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { Character } from './components/character';
+import { MINIMUM_PAGE_PARAM_VALUE } from './constants';
 /* import axios from 'axios';
 import CharacterList from './Components/CharacterList';
 import Header from './Components/Header'; */
@@ -20,7 +22,7 @@ const App = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [characters, setCharacters] = useState([]);
 
-  const endpointPageParam = useRef(1);
+  const endpointPageParam = useRef(MINIMUM_PAGE_PARAM_VALUE);
 
   /* NOTE: whenever the next button is clicked,
   and I need to call endpoint with different page param,
@@ -29,46 +31,68 @@ const App = () => {
   already been retrieved, otherwise proceed with just call API endpoint
   for those who I do not have info about. */
 
+  const getCharactersList = async () => {
+    try {
+      const characters = await getCharacters({
+        page: endpointPageParam.current,
+      });
+
+      const homeworldDetails = await Promise.all(
+        characters.map(getHomeworldDetails)
+      );
+
+      const homeWorldDetailsObj = homeworldDetails.reduce(
+        (acc, { url, ...rest }) => {
+          return { ...acc, [url]: rest };
+        },
+        {}
+      );
+
+      const updatedCharacters = characters.map((character) => ({
+        ...character,
+        homeWorldDetail: homeWorldDetailsObj[character.homeworld],
+      }));
+
+      setCharacters(updatedCharacters);
+    } catch (err) {
+      const errorMessage = err.message || 'Error here!';
+      setErrorMessage(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /* As soon as the component is mounted, call API endpoint
   to retrieve list of characters */
   useEffect(() => {
-    const getCharactersList = async () => {
-      try {
-        const characters = await getCharacters({
-          page: endpointPageParam.current,
-        });
-
-        const homeworldDetails = await Promise.all(
-          characters.map(getHomeworldDetails)
-        );
-
-        const homeWorldDetailsObj = homeworldDetails.reduce(
-          (acc, { url, ...rest }) => {
-            return { ...acc, [url]: rest };
-          },
-          {}
-        );
-
-        const updatedCharacters = characters.map((character) => ({
-          ...character,
-          homeWorldDetail: homeWorldDetailsObj[character.homeworld],
-        }));
-
-        setCharacters(updatedCharacters);
-      } catch (err) {
-        const errorMessage = err.message || 'Error here!';
-        setErrorMessage(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     getCharactersList();
   }, []);
 
-  console.log(characters);
+  const handlePreviousPage = () => {
+    if (endpointPageParam.current > 1) {
+      endpointPageParam.current -= 1;
+    }
 
-  return <></>;
+    getCharactersList();
+  };
+
+  /* As soon as the next page button is being clicked,
+  I need to increment the page param by 1 and repeat the process
+  of getting characters + homeWorld details */
+  const handleNextPage = () => {
+    endpointPageParam.current += 1;
+    getCharactersList();
+  };
+
+  return (
+    <>
+      {characters.map((character, _) => (
+        <Character key={character.name} {...character} />
+      ))}
+      <button onClick={handlePreviousPage}>Back Page</button>
+      <button onClick={handleNextPage}>Next Page</button>
+    </>
+  );
 
   /* *------------------------------------------------------* */
   /*                          OLD CODE
@@ -175,3 +199,11 @@ const App = () => {
 };
 
 export default App;
+
+/* 
+
+  NOTE: rather than store the characters inside an array,
+  implement a object data structure that store as
+  a KEY the page value and as VALUE the characters result.
+
+*/
