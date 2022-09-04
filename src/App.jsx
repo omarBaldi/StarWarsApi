@@ -1,28 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
-import { Character } from './components/character';
-import { MINIMUM_PAGE_PARAM_VALUE } from './constants';
-/* import axios from 'axios';
-import CharacterList from './Components/CharacterList';
-import Header from './Components/Header'; */
+import { useEffect, useRef, useReducer } from 'react';
+import { apiReducer } from './reducers/apiReducer';
+import { ACTIONS_TYPE } from './actions/apiActions';
 import { getCharacters } from './services/getCharacters';
 import { getHomeworldDetails } from './services/getHomeworldDetails';
-// import SearchBar from "./Components/SearchBar";
-// import swloading from './Components/swloading.gif';
+import { MINIMUM_PAGE_PARAM_VALUE } from './constants';
+import { Character } from './components/character';
+import swloading from './assets/swloading.gif';
+
+const initialState = {
+  loading: true,
+  errorMessage: '',
+  characters: [],
+};
 
 /**
- * TODO: replace useState with useReducer
- * TODO: implement custom hook to get list of characters ??
+ * TODO: implemente absolute imports
  */
 const App = () => {
   /* *------------------------------------------------------* */
   /*                          NEW CODE
   /* *------------------------------------------------------* */
 
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [characters, setCharacters] = useState([]);
-
   const endpointPageParam = useRef(MINIMUM_PAGE_PARAM_VALUE);
+  const [state, dispatch] = useReducer(apiReducer, initialState);
 
   /* NOTE: whenever the next button is clicked,
   and I need to call endpoint with different page param,
@@ -53,12 +53,15 @@ const App = () => {
         homeWorldDetail: homeWorldDetailsObj[character.homeworld],
       }));
 
-      setCharacters(updatedCharacters);
+      dispatch({
+        type: ACTIONS_TYPE.SET_CHARACTERS,
+        payload: updatedCharacters,
+      });
     } catch (err) {
       const errorMessage = err.message || 'Error here!';
-      setErrorMessage(errorMessage);
+      dispatch({ type: ACTIONS_TYPE.SET_ERROR_MESSAGE, payload: errorMessage });
     } finally {
-      setLoading(false);
+      dispatch({ type: ACTIONS_TYPE.SET_LOADING, payload: false });
     }
   };
 
@@ -84,9 +87,12 @@ const App = () => {
     getCharactersList();
   };
 
+  if (state.loading) return <img src={swloading} alt=''></img>;
+  if (state.errorMessage) return <div>{state.errorMessage}</div>;
+
   return (
     <>
-      {characters.map((character, _) => (
+      {state.characters.map((character, _) => (
         <Character key={character.name} {...character} />
       ))}
       <button onClick={handlePreviousPage}>Back Page</button>
