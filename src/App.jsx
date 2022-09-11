@@ -90,6 +90,10 @@ const App = () => {
       .finally(() => {
         dispatch({ type: ACTIONS_TYPE.SET_LOADING, payload: false });
       });
+
+    return () => {
+      dispatch({ type: ACTIONS_TYPE.SET_LOADING, payload: true });
+    };
   }, [getCharactersList]);
 
   const handlePreviousPage = () => {
