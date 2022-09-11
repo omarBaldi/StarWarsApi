@@ -1,12 +1,13 @@
 import { useEffect, useReducer, useState, useCallback } from 'react';
 import { apiReducer } from './reducers/apiReducer';
 import { ACTIONS_TYPE } from './actions/apiActions';
-import { getCharacters } from './services/getCharacters';
-import { getHomeworldDetails } from './services/getHomeworldDetails';
+import { getCharactersBasedOnPage } from './services/getCharacters';
 import { MINIMUM_PAGE_PARAM_VALUE } from './constants';
 import { Character } from './components/character';
 import swloading from './assets/swloading.gif';
 import { useCachedResults } from './hooks/useCachedResults';
+import { getDataFromEndpointUrl } from './services/getDataFromEndpointUrl';
+import { getPromiseData } from './utils/getPromiseData';
 
 const initialState = {
   loading: true,
@@ -15,32 +16,53 @@ const initialState = {
 };
 
 const App = () => {
-  /* *------------------------------------------------------* */
-  /*                          NEW CODE
-  /* *------------------------------------------------------* */
-
   const [state, dispatch] = useReducer(apiReducer, initialState);
   const [page, setPage] = useState(MINIMUM_PAGE_PARAM_VALUE);
   const { updateCacheResults, currentCachedResult } = useCachedResults(page);
 
-  const getCharactersList = useCallback(async () => {
-    if (currentCachedResult) {
-      return currentCachedResult;
-    }
+  /**
+   * @param {endpointsArr} endpointsArr an array of endpoints to be called - string[]
+   * @returns an object containing [key: url] and [value: data from endpoint url]
+   */
+  const getDataAndCreateObject = async (endpointsArr) => {
+    /* Create a new Set considering the fact that we do not
+    want to call the same endpoint more than once */
+    const uniqueUrls = [...new Set(endpointsArr)];
 
-    const characters = await getCharacters({
-      page,
-    });
+    /* Get promise data by passing array of promises */
+    const promiseData = await getPromiseData(
+      uniqueUrls.map(getDataFromEndpointUrl)
+    );
 
-    const homeworldDetails = (
-      await Promise.all(characters.map(getHomeworldDetails))
-    ).reduce((acc, { url, ...rest }) => {
+    /* Create object with url as a key and the data retrieved
+    as the value that can be easily retrieved from while looping
+    the characters */
+    const objBasedOnUrl = promiseData.reduce((acc, { url, ...rest }) => {
       return { ...acc, [url]: rest };
     }, {});
 
+    return objBasedOnUrl;
+  };
+
+  const getCharactersList = useCallback(async () => {
+    if (currentCachedResult) return currentCachedResult;
+
+    const characters = await getCharactersBasedOnPage(page);
+
+    const homeWorldUrls = characters.map(
+      ({ homeworld: homeworldEndpointUrl }) => homeworldEndpointUrl
+    );
+    const homeworldsDetailsObj = await getDataAndCreateObject(homeWorldUrls);
+
+    const speciesUrls = [].concat(
+      ...characters.map(({ species: speciesEndpointUrl }) => speciesEndpointUrl)
+    );
+    const speciesDetailsObj = await getDataAndCreateObject(speciesUrls);
+
     const updatedCharacters = characters.map((character) => ({
       ...character,
-      homeWorldDetail: homeworldDetails[character.homeworld],
+      homeWorldDetail: homeworldsDetailsObj[character.homeworld],
+      speciesDetail: speciesDetailsObj[character.species[0]],
     }));
 
     updateCacheResults(updatedCharacters);
@@ -93,117 +115,6 @@ const App = () => {
       <button onClick={handleNextPage}>Next Page</button>
     </>
   );
-
-  /* *------------------------------------------------------* */
-  /*                          OLD CODE
-  /* *------------------------------------------------------* */
-
-  /* const [characters, setCharacters] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [homeWorld, setHomeWorld] = useState([]);
-  // const [species, setSpecies] = useState([]);
-  const [nextPageUrl, setNextPageUrl] = useState(`${BASE_API_URL}/people/`);
-  const [backPageUrl, setBackPageUrl] = useState('');
-  const [test, setTest] = useState([]);
-
-  const fetchPeople = async () => {
-    const { data } = await axios.get(nextPageUrl);
-    setNextPageUrl(data.next);
-    setBackPageUrl(data.previous);
-    return data.results;
-  };
-
-  const backPage = async () => {
-    const { data } = await axios.get(backPageUrl);
-    setNextPageUrl(data.next);
-    setBackPageUrl(data.previous);
-  };
-
-  // Get People
-  async function getPeople() {
-    const persons = await fetchPeople();
-
-    const homeWorldUrl = await Promise.all(
-      persons.map((thing) => axios.get(thing.homeworld))
-    );
-
-    const newPersons = persons.map((person) => {
-      return {
-        ...person,
-        homeworld: homeWorldUrl.find(
-          (url) => url.config.url === person.homeworld
-        ),
-      };
-    });
-
-    const newPersons2 = newPersons.map((person) => {
-      return {
-        ...person,
-        homeWorld: person.homeworld.data.name,
-      };
-    });
-
-    setPeople(newPersons2);
-  }
-
-  async function getSpecies() {
-    // const persons = await fetchPeople();
-    const speciesUrl = await Promise.all(
-      // filter by length to get all with [0] together since all are arrays of [0]
-      // map to create array of each one with an array of [0]
-      people
-        .filter((thing) => thing.species.length)
-        .map((thing) => axios.get(thing.species[0]))
-    );
-
-    const newSwapi = people.map((person) => {
-      return {
-        ...person,
-        species: speciesUrl.find((info) => info.data.url === person.species[0]),
-      };
-    });
-    const newSwapi2 = newSwapi.map((person) => {
-      if (person.species == undefined) {
-        return { ...person, species: 'Human' };
-      } else {
-        return { ...person, species: person.species.data.name };
-      }
-    });
-    setCharacters(newSwapi2);
-    console.log(characters);
-    // species.data.name
-    setTest(newSwapi2);
-  }
-
-  useEffect(() => {
-    async function getCharacters() {
-      await getPeople();
-      getSpecies();
-    }
-    //  getPeople();
-    //  getSpecies();
-
-    getCharacters();
-  }, []);
-
-  return (
-    <div>
-      <CharacterList list={characters} />
-      <h4>Real Buttons Below</h4>
-      <button onClick={(e) => backPage()}>Back Page</button>
-      <button onClick={(e) => fetchPeople()}>Next Page</button>
-      <h3>Test Button</h3>
-      <button onClick={(e) => console.log(test)}>Test</button>
-    </div>
-  ); */
 };
 
 export default App;
-
-/* 
-
-  NOTE: rather than store the characters inside an array,
-  implement a object data structure that store as
-  a KEY the page value and as VALUE the characters result.
-
-*/

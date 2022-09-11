@@ -35,12 +35,18 @@ const cachedResultsReducer = (state, action) => {
   }
 };
 
+/**
+ * TODO: move cachedResult reducer inside folder
+ */
 export const useCachedResults = (page) => {
-  const [state, dispatch] = useReducer(cachedResultsReducer, cachedResultState);
+  const [{ cachedResults, currentCachedResult }, dispatch] = useReducer(
+    cachedResultsReducer,
+    cachedResultState
+  );
 
   useEffect(() => {
     const cachedResultsKey = page.toString();
-    const cachedResponse = state.cachedResults.get(cachedResultsKey);
+    const cachedResponse = cachedResults.get(cachedResultsKey);
 
     dispatch({
       type: CACHED_RESULTS_ACTIONS.SET_CURRENT_CACHED_RESULT,
@@ -59,7 +65,7 @@ export const useCachedResults = (page) => {
   };
 
   return {
-    ...state,
+    currentCachedResult,
     updateCacheResults,
   };
 };

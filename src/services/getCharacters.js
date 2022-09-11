@@ -1,10 +1,10 @@
 import axios from 'axios';
-import { BASE_API_URL } from '../constants';
+import { BASE_API_URL, DEFAULT_ERROR_MESSAGE_CHARACTERS } from '../constants';
 
 /**
  * TODO: create axios instance with base URL rather than specifying that every time
  */
-export const getCharacters = async ({ page = 1 }) => {
+export const getCharactersBasedOnPage = async (page) => {
   try {
     const { data } = await axios({
       method: 'GET',
@@ -17,6 +17,9 @@ export const getCharacters = async ({ page = 1 }) => {
 
     return data.results;
   } catch (err) {
-    throw new Error(err);
+    const errorMessage = axios.isAxiosError(err)
+      ? err.message
+      : DEFAULT_ERROR_MESSAGE_CHARACTERS;
+    Promise.reject(errorMessage);
   }
 };
