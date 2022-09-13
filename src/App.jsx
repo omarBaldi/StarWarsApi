@@ -7,7 +7,7 @@ import { Character } from './components/character';
 import swloading from './assets/swloading.gif';
 import { useCachedResults } from './hooks/useCachedResults';
 import { getDataFromEndpointUrl } from './services/getDataFromEndpointUrl';
-import { getPromiseData } from './utils/getPromiseData';
+import { getPromiseFulfilledData } from './utils/getPromiseFulfilledData';
 
 const initialState = {
   loading: true,
@@ -20,28 +20,26 @@ const App = () => {
   const [page, setPage] = useState(MINIMUM_PAGE_PARAM_VALUE);
   const { updateCacheResults, currentCachedResult } = useCachedResults(page);
 
-  /**
-   * @param {endpointsArr} endpointsArr an array of endpoints to be called - string[]
-   * @returns an object containing [key: url] and [value: data from endpoint url]
-   */
-  const getDataAndCreateObject = async (endpointsArr) => {
-    /* Create a new Set considering the fact that we do not
-    want to call the same endpoint more than once */
-    const uniqueUrls = [...new Set(endpointsArr)];
+  const getHomeWorldAndSpeciesDetails = async ({
+    homeworld: homeworldEndpointUrl,
+    species: speciesEndpointUrls,
+    ...restCharacterInfo
+  }) => {
+    const homeWorldPromise = getDataFromEndpointUrl(homeworldEndpointUrl);
+    const speciesPromise = speciesEndpointUrls[0]
+      ? getDataFromEndpointUrl(speciesEndpointUrls[0])
+      : Promise.resolve('Human');
 
-    /* Get promise data by passing array of promises */
-    const promiseData = await getPromiseData(
-      uniqueUrls.map(getDataFromEndpointUrl)
-    );
+    const [homeWorldDetails, speciesDetails] = await getPromiseFulfilledData([
+      homeWorldPromise,
+      speciesPromise,
+    ]);
 
-    /* Create object with url as a key and the data retrieved
-    as the value that can be easily retrieved from while looping
-    the characters */
-    const objBasedOnUrl = promiseData.reduce((acc, { url, ...rest }) => {
-      return { ...acc, [url]: rest };
-    }, {});
-
-    return objBasedOnUrl;
+    return {
+      ...restCharacterInfo,
+      homeWorldDetails,
+      speciesDetails,
+    };
   };
 
   const getCharactersList = useCallback(async () => {
@@ -49,21 +47,9 @@ const App = () => {
 
     const characters = await getCharactersBasedOnPage(page);
 
-    const homeWorldUrls = characters.map(
-      ({ homeworld: homeworldEndpointUrl }) => homeworldEndpointUrl
+    const updatedCharacters = await Promise.all(
+      characters.map(getHomeWorldAndSpeciesDetails)
     );
-    const homeworldsDetailsObj = await getDataAndCreateObject(homeWorldUrls);
-
-    const speciesUrls = [].concat(
-      ...characters.map(({ species: speciesEndpointUrl }) => speciesEndpointUrl)
-    );
-    const speciesDetailsObj = await getDataAndCreateObject(speciesUrls);
-
-    const updatedCharacters = characters.map((character) => ({
-      ...character,
-      homeWorldDetail: homeworldsDetailsObj[character.homeworld],
-      speciesDetail: speciesDetailsObj[character.species[0]],
-    }));
 
     updateCacheResults(updatedCharacters);
 
@@ -80,8 +66,7 @@ const App = () => {
           payload: updatedCharacters,
         });
       })
-      .catch((err) => {
-        const errorMessage = err.message || 'Error here!';
+      .catch((errorMessage) => {
         dispatch({
           type: ACTIONS_TYPE.SET_ERROR_MESSAGE,
           payload: errorMessage,
